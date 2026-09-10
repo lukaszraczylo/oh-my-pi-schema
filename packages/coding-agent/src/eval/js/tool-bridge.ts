@@ -1,9 +1,10 @@
-import type { AgentTool, AgentToolResult } from "@oh-my-pi/pi-agent-core";
+import type { AgentToolResult } from "@oh-my-pi/pi-agent-core";
 import { toolWireSchema, validateToolArguments } from "@oh-my-pi/pi-ai";
 import { isRecord } from "@oh-my-pi/pi-utils";
 import { INTENT_FIELD } from "@oh-my-pi/pi-wire";
 import type { ToolSession } from "../../tools";
 import { ToolError } from "../../tools/tool-errors";
+import { getSessionTool, toolResultHasError } from "../../tools/tool-dispatch";
 import { schemaDeclaresIntentField } from "../../utils/tool-schema";
 import { invokeEvalPrelude } from "../preludes";
 import { EVAL_AGENT_BRIDGE_NAME, type EvalAgentHandleResult, runEvalAgent } from "../agent-bridge";
@@ -45,18 +46,6 @@ type ToolValue =
 			images?: Array<{ mimeType: string; data: string }>;
 			hasError?: boolean;
 	  };
-function toolResultHasError(result: AgentToolResult): boolean {
-	if (isRecord(result) && result.isError === true) return true;
-	return isRecord(result.details) && result.details.isError === true;
-}
-
-function getTool(session: ToolSession, name: string): AgentTool {
-	const tool = session.getToolForEvalBridge ? session.getToolForEvalBridge(name) : session.getToolByName?.(name);
-	if (!tool) {
-		throw new ToolError(`Unknown tool from js runtime: ${name}`);
-	}
-	return tool;
-}
 
 function normalizeArgs(args: unknown, defaultIntent?: string): unknown {
 	if (!isRecord(args)) return args;
@@ -203,7 +192,7 @@ export async function callSessionTool(name: string, args: unknown, options: Tool
 		// messages; a bridged call would report success without taking effect.
 		throw new ToolError(`\`${name}\` cannot run through the eval bridge; call the direct \`${name}\` tool.`);
 	}
-	const tool = getTool(options.session, name);
+	const tool = getSessionTool(options.session, name, "js runtime");
 	const toolCallId = `js-${name}-${crypto.randomUUID()}`;
 	// A schema-owned name stays tool data across alternatives. Deleting an
 	// invalid value to make another branch match could select a different operation.
