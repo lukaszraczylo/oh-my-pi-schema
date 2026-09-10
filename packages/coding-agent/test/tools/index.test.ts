@@ -10,7 +10,9 @@ function createTestSession(overrides: Partial<ToolSession> = {}): ToolSession {
 		hasUI: false,
 		getSessionFile: () => null,
 		getSessionSpawns: () => "*",
-		settings: Settings.isolated(),
+		// Schema mode is off across this suite: it asserts exact built-in tool
+		// rosters, and the Schema loop force-includes its own tools into every list.
+		settings: Settings.isolated({ "schema.enabled": false }),
 		...overrides,
 	};
 }
@@ -19,6 +21,7 @@ function createSettingsWithOverrides(overrides: Partial<Record<SettingPath, unkn
 	return Settings.isolated({
 		"lsp.formatOnWrite": true,
 		"bashInterceptor.enabled": true,
+		"schema.enabled": false,
 		...overrides,
 	});
 }

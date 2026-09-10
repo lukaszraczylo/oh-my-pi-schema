@@ -20,6 +20,13 @@ export const launchHelp = {
 		smol: Flags.string({ description: "Smol/fast model for lightweight tasks (or PI_SMOL_MODEL env)" }),
 		slow: Flags.string({ description: "Slow/reasoning model for thorough analysis (or PI_SLOW_MODEL env)" }),
 		plan: Flags.string({ description: "Plan model for architectural planning (or PI_PLAN_MODEL env)" }),
+		schema: Flags.boolean({
+			description:
+				"Run the Schema control loop: certify world_model.js against the recorded timeline and route world-changing tools through schema_commit (default on; see schema.enabled)",
+		}),
+		"no-schema": Flags.boolean({
+			description: "Leave the Schema loop and call world-changing tools directly, like stock omp",
+		}),
 		prewalk: Flags.boolean({
 			description:
 				"Switch from the active model to a fast/cheap model at the first edit/write after the plan's todo list exists (default off; see prewalk.enabled)",

@@ -41,7 +41,7 @@ import { AskTool } from "./ask";
 import { AstEditTool } from "./ast-edit";
 import { AstGrepTool } from "./ast-grep";
 import { BashTool } from "./bash";
-import { type BuiltinToolName, type HiddenToolName, normalizeToolNames } from "./builtin-names";
+import { type BuiltinToolName, type HiddenToolName, normalizeToolNames, SCHEMA_TOOL_NAMES } from "./builtin-names";
 import { type CheckpointState, CheckpointTool, type CompletedRewindState, RewindTool } from "./checkpoint";
 import { ContextNotesTool, NewContextTool } from "./context-notes";
 import { DebugTool } from "./debug";
@@ -58,6 +58,8 @@ import { MemoryRecallTool } from "./memory-recall";
 import { MemoryReflectTool } from "./memory-reflect";
 import { MemoryRetainTool } from "./memory-retain";
 import { wrapToolWithMetaNotice } from "./output-meta";
+import { gatedToolNames, isSchemaEnabled, wrapToolWithSchemaLoop } from "../schema";
+import { SchemaBacktestTool, SchemaCommitTool, SchemaExperimentTool, SchemaModelTool, SchemaPlanTool } from "./schema";
 import { ReadTool } from "./read";
 import type { PlanProposalHandler } from "./resolve";
 import { SecurityScanTool } from "./security-scan";
@@ -99,6 +101,7 @@ export * from "./memory-recall";
 export * from "./memory-reflect";
 export * from "./memory-retain";
 export * from "./read";
+export * from "./schema";
 export * from "./report-tool-issue";
 export * from "./resolve";
 export * from "./review";
@@ -487,6 +490,11 @@ export const BUILTIN_TOOLS: Record<BuiltinToolName, ToolFactory> = {
 	reflect: MemoryReflectTool.createIf,
 	learn: LearnTool.createIf,
 	manage_skill: ManageSkillTool.createIf,
+	schema_model: SchemaModelTool.createIf,
+	schema_backtest: SchemaBacktestTool.createIf,
+	schema_plan: SchemaPlanTool.createIf,
+	schema_commit: SchemaCommitTool.createIf,
+	schema_experiment: SchemaExperimentTool.createIf,
 };
 
 export const HIDDEN_TOOLS: Record<HiddenToolName, ToolFactory> = {
@@ -564,6 +572,19 @@ export async function createTools(session: ToolSession, toolNames?: string[]): P
 			requestedTools.push("checkpoint");
 		}
 	}
+	// Schema mode is the control loop, not an optional feature: a list that grants a
+	// gated tool but not `schema_commit` has no channel to the world at all. Like the
+	// checkpoint/rewind pairing above this is a safety pairing, so it applies to
+	// restricted sessions too — but only when a gated tool is actually on the list.
+	if (requestedTools && isSchemaEnabled(session)) {
+		const gated = gatedToolNames(session);
+		if (requestedTools.some(name => gated.has(name))) {
+			for (const name of SCHEMA_TOOL_NAMES) {
+				if (!requestedTools.includes(name)) requestedTools.push(name);
+			}
+		}
+	}
+
 	// Auto-include AST counterparts when their text-based sibling is present.
 	// Restricted callers own the active list and must not have it widened.
 	if (requestedTools && !restrictToolNames) {
@@ -701,10 +722,15 @@ export async function createTools(session: ToolSession, toolNames?: string[]): P
 		session.isToolActive = name => activeToolNames.has(name);
 	}
 
+	// Schema mode puts every tool inside the observe/deliberate/execute/record loop:
+	// the wrapper appends each real transition to the append-only timeline and holds
+	// world-changing tools behind `schema_commit`.
+	const finalizeTool = (tool: Tool): Tool => wrapToolWithSchemaLoop(session, wrapToolWithMetaNotice(tool));
+
 	const baseResults = await Promise.all(
 		baseEntries.map(async ([name, factory]) => {
 			const tool = await logger.time(`createTools:${name}`, factory as ToolFactory, session);
-			return tool ? wrapToolWithMetaNotice(tool) : null;
+			return tool ? finalizeTool(tool) : null;
 		}),
 	);
 	let tools = baseResults.filter((r): r is Tool => r !== null);
@@ -733,7 +759,7 @@ export async function createTools(session: ToolSession, toolNames?: string[]): P
 		session.deviceOnlyWrite = true;
 		const writeTool = await logger.time("createTools:write:xdev-transport", BUILTIN_TOOLS.write, session);
 		if (writeTool) {
-			const wrapped = wrapToolWithMetaNotice(writeTool);
+			const wrapped = finalizeTool(writeTool);
 			tools.push(wrapped);
 			toolRegistry.set(wrapped.name, wrapped);
 			builtInNames.add(wrapped.name);
@@ -774,7 +800,7 @@ export async function createTools(session: ToolSession, toolNames?: string[]): P
 	) {
 		const writeTool = await logger.time("createTools:write", BUILTIN_TOOLS.write, session);
 		if (writeTool) {
-			const wrapped = wrapToolWithMetaNotice(writeTool);
+			const wrapped = finalizeTool(writeTool);
 			tools.push(wrapped);
 			toolRegistry.set(wrapped.name, wrapped);
 			builtInNames.add(wrapped.name);
@@ -783,7 +809,7 @@ export async function createTools(session: ToolSession, toolNames?: string[]): P
 	if (!restrictToolNames && xdevMounted && !tools.some(tool => tool.name === "read")) {
 		const readTool = await logger.time("createTools:read", BUILTIN_TOOLS.read, session);
 		if (readTool) {
-			const wrapped = wrapToolWithMetaNotice(readTool);
+			const wrapped = finalizeTool(readTool);
 			tools.push(wrapped);
 			toolRegistry.set(wrapped.name, wrapped);
 			builtInNames.add(wrapped.name);

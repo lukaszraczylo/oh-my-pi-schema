@@ -16,6 +16,9 @@ describe("goal tool registration when goal mode is enabled at runtime", () => {
 		resetSettingsForTest();
 		tempDir = TempDir.createSync("@pi-repro-9444-");
 		await Settings.init({ inMemory: true, cwd: tempDir.path() });
+		// Schema mode is off here: this repro drives `write` directly to prove goal-tool
+		// registration, and the commit loop would otherwise own that call.
+		Settings.instance.set("schema.enabled", false);
 	});
 
 	afterEach(async () => {

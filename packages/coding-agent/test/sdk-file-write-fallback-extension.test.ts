@@ -116,7 +116,9 @@ describe("registerFileWriteFallback end-to-end (real extension, real session)", 
 		agentDir: tempDir,
 		modelRegistry,
 		sessionManager: SessionManager.inMemory(),
-		settings: Settings.isolated(),
+		// Schema mode is off here: the fallback seams are exercised by calling `write`
+		// and `edit` directly, which the commit loop would otherwise own.
+		settings: Settings.isolated({ "schema.enabled": false }),
 		model: getBundledModel("openai", "gpt-4o-mini"),
 		disableExtensionDiscovery: true,
 		extensions,

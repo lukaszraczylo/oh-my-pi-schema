@@ -28,6 +28,7 @@ function createSession(testDir: string): ToolSession {
 			"astGrep.enabled": true,
 			"astEdit.enabled": true,
 			"tools.xdev": false,
+			"schema.enabled": false,
 		}),
 	};
 }

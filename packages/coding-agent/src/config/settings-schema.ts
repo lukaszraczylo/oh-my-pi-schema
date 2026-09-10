@@ -4881,6 +4881,111 @@ export const SETTINGS_SCHEMA = {
 		},
 	},
 
+	// ────────────────────────────────────────────────────────────────────────
+	// Schema mode — the executable world-model control loop
+	// ────────────────────────────────────────────────────────────────────────
+
+	"schema.enabled": {
+		type: "boolean",
+		default: true,
+		ui: {
+			tab: "tasks",
+			group: "Modes",
+			label: "Schema Mode",
+			description:
+				"Run the observe/deliberate/execute/record loop: keep the world model in world_model.js, certify it against the recorded timeline, and send world-changing actions only through schema_commit",
+		},
+	},
+
+	"schema.gatedTools": {
+		type: "array",
+		default: ["edit", "write", "ast_edit"],
+		ui: {
+			tab: "tasks",
+			group: "Modes",
+			label: "Commit-Gated Tools",
+			description: "Tools that change the world and therefore run only inside schema_commit",
+			condition: "schemaEnabled",
+		},
+	},
+
+	"schema.gateBash": {
+		type: "boolean",
+		default: false,
+		ui: {
+			tab: "tasks",
+			group: "Modes",
+			label: "Gate Bash Behind Commit",
+			description:
+				"Also route bash through schema_commit. Off by default because bash is the main observation channel as well as a mutation channel",
+			condition: "schemaEnabled",
+		},
+	},
+
+	"schema.minCoverage": {
+		type: "number",
+		default: 0.5,
+		ui: {
+			tab: "tasks",
+			group: "Modes",
+			label: "Minimum Prediction Coverage",
+			description:
+				"Fraction of recorded transitions the world model must predict before it may plan or commit. A model that predicts nothing certifies nothing",
+			condition: "schemaEnabled",
+		},
+	},
+
+	"schema.maxSearchNodes": {
+		type: "number",
+		default: 20000,
+		ui: {
+			tab: "tasks",
+			group: "Modes",
+			label: "Plan Search Node Budget",
+			description: "Nodes breadth-first search may expand inside the world model before it gives up",
+			condition: "schemaEnabled",
+		},
+	},
+
+	"schema.maxPlanDepth": {
+		type: "number",
+		default: 64,
+		ui: {
+			tab: "tasks",
+			group: "Modes",
+			label: "Plan Depth Limit",
+			description: "Longest action sequence schema_plan may return",
+			condition: "schemaEnabled",
+		},
+	},
+
+	"schema.timeoutMs": {
+		type: "number",
+		default: 15000,
+		ui: {
+			tab: "tasks",
+			group: "Modes",
+			label: "World Model Timeout",
+			description: "Milliseconds a single world-model replay or search may run before it is cancelled",
+			condition: "schemaEnabled",
+		},
+	},
+
+	"schema.epicycleThreshold": {
+		type: "number",
+		default: 3,
+		ui: {
+			tab: "tasks",
+			group: "Modes",
+			label: "Epicycle Warning Threshold",
+			description:
+				"Consecutive rule-only revisions with an unchanged state representation and a red backtest before schema_model status advises changing the representation",
+			condition: "schemaEnabled",
+		},
+	},
+
+	"schema.stateDir": { type: "string", default: undefined },
+
 	"goal.enabled": {
 		type: "boolean",
 		default: true,

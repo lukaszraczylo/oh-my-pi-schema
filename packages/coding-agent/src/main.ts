@@ -1256,6 +1256,13 @@ export async function buildSessionOptions(
 		options.modelPattern = parsed.models;
 	}
 
+	if (parsed.schema && parsed.noSchema) {
+		throw new Error("--schema cannot be combined with --no-schema");
+	}
+	if (parsed.schema || parsed.noSchema) {
+		activeSettings.override("schema.enabled", parsed.schema === true);
+	}
+
 	if (parsed.noPrewalk && (parsed.prewalk || parsed.prewalkInto !== undefined)) {
 		throw new Error("--no-prewalk cannot be combined with --prewalk or --prewalk-into");
 	}

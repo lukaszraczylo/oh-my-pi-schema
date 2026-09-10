@@ -37,7 +37,9 @@ function xdevSession(cwd: string, overrides: Partial<ToolSession> = {}): ToolSes
 		hasUI: true,
 		getSessionFile: () => null,
 		getSessionSpawns: () => "*",
-		settings: Settings.isolated({}),
+		// Schema mode is off across this suite: it drives `write`/`ast_edit` directly to
+		// assert xd:// dispatch, which the commit loop would otherwise own.
+		settings: Settings.isolated({ "schema.enabled": false }),
 		...overrides,
 	};
 }

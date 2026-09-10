@@ -110,6 +110,23 @@ eval "$(omps completions bash)"
 omps completions fish > ~/.config/fish/completions/omps.fish
 ```
 
+## Schema mode: the agent writes its theory down, then proves it
+
+`omps` runs the Schema control loop by default. The agent keeps its theory of the task
+in an executable `world_model.js` instead of in context, certifies that program against
+every action it has actually taken, searches it for a plan, and reaches the world
+through one gated channel.
+
+- `schema_model` — read and revise the world model and its notes.
+- `schema_backtest` — replay the model over the whole recorded timeline: `N/M` exact, coverage, and the transitions it gets wrong.
+- `schema_plan` — breadth-first search inside the certified model. Costs no real actions.
+- `schema_commit` — the only channel to the world. The first misprediction voids the rest of the plan.
+- `schema_experiment` — rank candidate probes by how many rival hypotheses each separates.
+
+`edit`, `write`, and `ast_edit` run only inside a commit. `--no-schema` restores the
+free-form loop. The design follows <https://schema-harness.github.io/>; see
+[docs/schema-mode.md](docs/schema-mode.md).
+
 ## Every tool, _benchmaxxed_.
 
 Edits that land on the first attempt. Reads that summarize files instead of dumping their content. Searches that return instantly. Pick any model — omp will get it right.

@@ -18,6 +18,9 @@ const BASE_SETTINGS = {
 	"async.enabled": false,
 	"bash.autoBackground.enabled": false,
 	"bashInterceptor.enabled": false,
+	// Schema mode is off here: this suite exercises the approval gate on a direct
+	// write, not the commit loop that would otherwise own that call.
+	"schema.enabled": false,
 } as const;
 
 const APPROVAL_RE = /requires approval but no interactive UI available/;

@@ -36,6 +36,8 @@ export interface Args {
 	slow?: string;
 	plan?: string;
 	prewalk?: boolean;
+	schema?: boolean;
+	noSchema?: boolean;
 	noPrewalk?: boolean;
 	prewalkInto?: string;
 	planYolo?: boolean;
@@ -258,6 +260,10 @@ export function parseArgs(inputArgs: string[], extensionFlags?: Map<string, { ty
 			result.advisor = true;
 		} else if (arg === "--external-thinking") {
 			result.externalThinking = true;
+		} else if (arg === "--schema") {
+			result.schema = true;
+		} else if (arg === "--no-schema") {
+			result.noSchema = true;
 		} else if (arg === "--prewalk") {
 			result.prewalk = true;
 		} else if (arg === "--no-prewalk") {

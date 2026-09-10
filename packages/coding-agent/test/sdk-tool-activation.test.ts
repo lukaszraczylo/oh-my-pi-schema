@@ -97,7 +97,9 @@ describe("createAgentSession defaultInactive tool activation", () => {
 		agentDir: tempDir,
 		modelRegistry,
 		sessionManager: SessionManager.inMemory(),
-		settings: Settings.isolated(),
+		// Schema mode is off across this suite: it drives `write` directly and asserts
+		// exact active-tool sets, both of which the commit loop would otherwise own.
+		settings: Settings.isolated({ "schema.enabled": false }),
 		model: getBundledModel("openai", "gpt-4o-mini"),
 		disableExtensionDiscovery: true,
 		skills: [],
@@ -1796,6 +1798,7 @@ describe("createAgentSession defaultInactive tool activation", () => {
 
 		const settings = Settings.isolated();
 		settings.set("plan.enabled", false);
+		settings.set("schema.enabled", false);
 
 		const { session } = await createAgentSession({
 			...baseOptions(tempDir),

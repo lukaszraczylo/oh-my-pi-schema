@@ -27,9 +27,23 @@ export const BUILTIN_TOOL_NAMES = [
 	"reflect",
 	"learn",
 	"manage_skill",
+	"schema_model",
+	"schema_backtest",
+	"schema_plan",
+	"schema_commit",
+	"schema_experiment",
 ] as const;
 
 export type BuiltinToolName = (typeof BUILTIN_TOOL_NAMES)[number];
+
+/** The Schema control loop's own tools. They deliberate and commit; they never bypass the gate. */
+export const SCHEMA_TOOL_NAMES = [
+	"schema_model",
+	"schema_backtest",
+	"schema_plan",
+	"schema_commit",
+	"schema_experiment",
+] as const satisfies readonly BuiltinToolName[];
 
 export const HIDDEN_TOOL_NAMES = ["yield", "goal", "think"] as const;
 

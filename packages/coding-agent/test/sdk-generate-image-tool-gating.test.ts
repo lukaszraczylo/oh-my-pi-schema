@@ -105,7 +105,9 @@ describe("generate_image tool gating", () => {
 			enableMCP: false,
 			modelRegistry,
 			sessionManager: SessionManager.inMemory(),
-			settings: Settings.isolated({ "plan.enabled": false }),
+			// Schema mode is off here: these cases drive `write` directly to assert
+			// xd:// device mounting, which the commit loop would otherwise own.
+			settings: Settings.isolated({ "plan.enabled": false, "schema.enabled": false }),
 			model: getBundledModel("openai", "gpt-4o-mini"),
 			disableExtensionDiscovery: true,
 			toolNames,
@@ -383,7 +385,11 @@ describe("generate_image tool gating", () => {
 			agentDir: registryDir,
 			modelRegistry,
 			sessionManager: SessionManager.inMemory(),
-			settings: Settings.isolated({ "plan.enabled": false, "generate_image.enabled": false }),
+			settings: Settings.isolated({
+				"plan.enabled": false,
+				"generate_image.enabled": false,
+				"schema.enabled": false,
+			}),
 			model: getBundledModel("openai", "gpt-4o-mini"),
 			disableExtensionDiscovery: true,
 			enableMCP: false,

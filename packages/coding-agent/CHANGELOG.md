@@ -5,6 +5,13 @@
 ### Breaking Changes
 
 - The CLI installs as `omps`, and release binaries ship as `omps-<platform>-<arch>`, so this build coexists with a stock `omp` install.
+- Schema mode is on by default: `edit`, `write`, and `ast_edit` run only inside `schema_commit`, and every tool call is appended to an append-only timeline. Use `--no-schema` or `schema.enabled false` for the previous free-form loop.
+
+### Added
+
+- Added Schema mode: keep the theory of a task in an executable `world_model.js`, certify it against every recorded transition with `schema_backtest`, search it for a plan with `schema_plan`, commit predicted actions through `schema_commit`, and rank discriminating probes with `schema_experiment`. See `docs/schema-mode.md`.
+- `schema_model status` counts consecutive rule-only revisions that left the state representation unchanged while the backtest stayed red, and advises changing the representation instead.
+- Added `--schema` / `--no-schema` and the `schema.*` settings (gated tools, coverage floor, search budgets, epicycle threshold, state directory).
 
 ## [18.1.16] - 2026-09-09
 

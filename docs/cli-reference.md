@@ -108,6 +108,8 @@ See [providers](./providers.md) and [models](./models.md) for model resolution.
 
 | Flag | Description |
 | --- | --- |
+| `--schema` | Run the Schema control loop: certify `world_model.js` against the recorded timeline and route world-changing tools through `schema_commit` (default on; see `schema.enabled`). |
+| `--no-schema` | Leave the Schema loop and call world-changing tools directly. |
 | `--prewalk` | Switch to a fast/cheap model at the first edit/write after the plan's todo list exists (default off; see `prewalk.enabled`). |
 | `--no-prewalk` | Disable prewalk even if `prewalk.enabled` is set. |
 | `--prewalk-into <id>` | Target model for prewalk (default the `smol` role). |
