@@ -34,6 +34,8 @@ The most capable agent surface that ships. Continuously tuned by real-world use 
 
 ## Install
 
+This fork installs as `omps`, so it sits alongside a stock `omp`.
+
 **macOS · Linux**
 
 ```sh
@@ -45,7 +47,7 @@ curl -fsSL https://omp.sh/install | sh
 **Homebrew**
 
 ```sh
-brew install can1357/tap/omp
+brew install can1357/tap/omps
 ```
 
 **Bun (recommended)**
@@ -95,17 +97,17 @@ macOS · Linux · Windows · bun ≥ 1.3.14
 
 ### Shell completions
 
-`omp` generates its own completion scripts for **bash**, **zsh**, and **fish** from the live command/flag metadata, so they never drift from the actual CLI. Subcommands, flags, and enum values complete statically; model names (`--model`, `--smol`, `--slow`, `--plan`) resolve against the bundled model catalog and `--resume` against your on-disk sessions.
+`omps` generates its own completion scripts for **bash**, **zsh**, and **fish** from the live command/flag metadata, so they never drift from the actual CLI. Subcommands, flags, and enum values complete statically; model names (`--model`, `--smol`, `--slow`, `--plan`) resolve against the bundled model catalog and `--resume` against your on-disk sessions.
 
 ```sh
 # zsh — add to ~/.zshrc (or write the output into a file on your $fpath)
-eval "$(omp completions zsh)"
+eval "$(omps completions zsh)"
 
 # bash — add to ~/.bashrc
-eval "$(omp completions bash)"
+eval "$(omps completions bash)"
 
 # fish
-omp completions fish > ~/.config/fish/completions/omp.fish
+omps completions fish > ~/.config/fish/completions/omps.fish
 ```
 
 ## Every tool, _benchmaxxed_.

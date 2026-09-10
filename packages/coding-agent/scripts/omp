@@ -1,11 +1,11 @@
 #!/bin/sh
-# Dev launcher for the omp CLI, installed by `bun run setup`.
+# Dev launcher for the omps CLI, installed by `bun run setup`.
 #
 # Problem it solves: Bun reads `bunfig.toml` from the *current working
 # directory* at startup and evaluates its `preload` entries before running the
 # script. A bun-shebang bin (what `bun link` creates for `src/cli.ts`)
 # therefore inherits whatever `preload` the directory you happen to be in
-# declares. Running `omp`/`pi` inside an unrelated Bun project can execute — and
+# declares. Running `omps`/`pi` inside an unrelated Bun project can execute — and
 # crash on — that project's preload, e.g.
 #   error: Cannot find module '@v12sh/utils/frontmatter' from '.../loader.ts'
 #
@@ -16,7 +16,7 @@
 set -e
 
 # Resolve this script's real location even when invoked through a symlink
-# (`$HOME/.bun/bin/omp` -> this file).
+# (`$HOME/.bun/bin/omps` -> this file).
 self=$0
 while [ -L "$self" ]; do
 	link=$(readlink "$self")
@@ -40,7 +40,7 @@ cd "$launch_dir"
 # preserve OMP's identity while still running the development CLI through Bun.
 run_bun() {
 	if [ "${HERDR_ENV:-}" = 1 ] && [ "$(uname -s)" = Darwin ]; then
-		exec -a omp bun "$@"
+		exec -a omps bun "$@"
 	fi
 	exec bun "$@"
 }

@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Breaking Changes
+
+- The CLI installs as `omps`, and release binaries ship as `omps-<platform>-<arch>`, so this build coexists with a stock `omp` install.
+
 ## [18.1.16] - 2026-09-09
 
 ### Added
