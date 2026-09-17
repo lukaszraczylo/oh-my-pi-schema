@@ -85,6 +85,7 @@ export class Timeline {
 		observation: SchemaObservation;
 		predicted?: string | null;
 		surprise?: boolean;
+		committed?: boolean;
 	}): Promise<TimelineEntry> {
 		const queued = this.#tail.then(() => this.#appendNow(record));
 		// Keep the chain alive after a rejection so one failed append cannot wedge the rest.
@@ -99,6 +100,7 @@ export class Timeline {
 		observation: SchemaObservation;
 		predicted?: string | null;
 		surprise?: boolean;
+		committed?: boolean;
 	}): Promise<TimelineEntry> {
 		const entries = await this.load();
 		const entry: TimelineEntry = {
@@ -114,6 +116,7 @@ export class Timeline {
 			},
 			...(record.predicted === undefined ? {} : { predicted: record.predicted }),
 			...(record.surprise ? { surprise: true } : {}),
+			...(record.committed ? { committed: true } : {}),
 		};
 		entries.push(entry);
 		try {

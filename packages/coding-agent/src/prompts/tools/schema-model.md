@@ -15,12 +15,14 @@ The contract `world_model.js` must satisfy:
 ```js
 function initialState() { return { /* the smallest state that explains the work */ }; }
 function step(state, action) { return { state: next, predict: "..." /* or null */ }; }
-function digest(observation) { return "..."; }  // project a real observation into predict-space
+function digest(observation, action) { return "..."; }  // project a real observation into predict-space
 function isGoal(state) { return false; }        // what "done" means
 function actions(state) { return []; }          // candidate actions for search
 function key(state) { return JSON.stringify(state); }
 ```
 
-`action` is `{ run, index, tool, args }`. `observation` is `{ ok, text, details }`. `predict` is compared verbatim against `digest(observation)`; return `null` to decline. Declining is honest but certifies nothing, and coverage falls.
+`action` is `{ run, index, tool, args }`. `observation` is `{ ok, text, details }`. `predict` is compared verbatim against `digest(observation, action)`; return `null` to decline.
+
+The seed scaffold works as-is: it predicts `ok` for successful `edit`, `write`, and `ast_edit` calls, and its `digest` reduces a test run to `exit=… pass=… fail=…`. A fresh session can commit immediately and grow the model from there. Coverage counts only world-changing transitions (the gated tools) — reads and searches never count — and the floor applies only after `schema.coverageAfter` of them. `digest` may return `null` when an observation has nothing to check, such as a failed edit; the entry is then skipped. An untouched earlier seed is upgraded automatically.
 
 When a prediction keeps failing, suspect the representation before you patch the rule. A special case bolted on to keep a wrong representation alive is an epicycle; `status` counts them.

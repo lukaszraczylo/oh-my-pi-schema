@@ -4940,6 +4940,63 @@ export const SETTINGS_SCHEMA = {
 		},
 	},
 
+	"schema.mode": {
+		type: "enum",
+		values: ["strict", "guided", "off"] as const,
+		default: "strict",
+		ui: {
+			tab: "tasks",
+			group: "Modes",
+			label: "Schema Enforcement",
+			description:
+				"How world-changing tools are handled. Strict runs them only inside schema_commit; guided runs them directly but records and advises; off disables the Schema loop",
+			options: [
+				{
+					value: "strict",
+					label: "Strict",
+					description: "Edits and writes run only inside schema_commit, checked against the world model",
+				},
+				{
+					value: "guided",
+					label: "Guided",
+					description: "Edits and writes may run directly; certification problems become warnings",
+				},
+				{ value: "off", label: "Off", description: "Disable the Schema loop and its tools" },
+			],
+		},
+	},
+
+	"schema.coverageAfter": {
+		type: "number",
+		default: 5,
+		ui: {
+			tab: "tasks",
+			group: "Modes",
+			label: "Coverage Floor Starts After",
+			description:
+				"World-changing transitions before schema.minCoverage is enforced. Earlier ones only need a backtest without mismatches",
+			condition: "schemaEnabled",
+		},
+	},
+
+	"schema.coverageScope": {
+		type: "enum",
+		values: ["session", "project"] as const,
+		default: "session",
+		ui: {
+			tab: "tasks",
+			group: "Modes",
+			label: "Coverage Scope",
+			description:
+				"Which world-changing transitions count toward coverage. Mismatches are always checked across the whole timeline",
+			condition: "schemaEnabled",
+			options: [
+				{ value: "session", label: "This session", description: "Only this session's world-changing transitions" },
+				{ value: "project", label: "Whole project", description: "Every session recorded in this project" },
+			],
+		},
+	},
+
 	"schema.gatedTools": {
 		type: "array",
 		default: ["edit", "write", "ast_edit"],

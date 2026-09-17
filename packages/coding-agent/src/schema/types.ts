@@ -38,8 +38,10 @@ export interface TimelineEntry {
 	observation: SchemaObservation;
 	/** Projection the model committed to before the action ran, when it came through `schema_commit`. */
 	predicted?: string | null;
-	/** Set when the live prediction check failed and voided the rest of the committed plan. */
+	/** Set when the live prediction check for this step failed. */
 	surprise?: boolean;
+	/** Set when the step ran through `schema_commit`. Committed transitions count toward coverage. */
+	committed?: boolean;
 }
 
 /** A single point where the certified program disagrees with recorded reality. */
@@ -61,7 +63,13 @@ export interface BacktestReport {
 	/** Entries whose projection matched the recording exactly. */
 	matched: number;
 	mismatches: BacktestMismatch[];
-	/** `checked / total`. A model that predicts nothing certifies nothing. */
+	/** Transitions that count toward coverage: committed or world-changing, within the configured scope. */
+	billable: number;
+	/** Billable transitions the model predicted. */
+	billableChecked: number;
+	/** Billable transitions the model declined to predict, counted by tool. */
+	uncovered: Record<string, number>;
+	/** `billableChecked / billable`, or 1 when nothing is billable. Reads and searches never count. */
 	coverage: number;
 	/** True when every checked entry matched and the program ran without throwing. */
 	green: boolean;
@@ -89,12 +97,15 @@ export interface PlanReport {
 
 /** Verdict for one live-committed step: did reality match the projection the model made? */
 export interface AdvanceResult {
-	/** The VM lost the live model; the caller must fall back to a full replay. */
+	/** The live model is unavailable: the VM lost it, or the model threw on this step. */
 	stale: boolean;
+	/** Why the model could not judge this step, when it threw. */
+	error?: string;
 	/** The model declined to predict this action. */
 	skipped?: boolean;
 	match?: boolean;
 	predicted?: string;
+	/** The observation's digest, even when the model declined to predict. Undefined when the digest had nothing to check. */
 	observed?: string;
 	goalReached?: boolean;
 	stateKeys?: string[];
@@ -147,5 +158,7 @@ export interface CertificationState {
 	modelHash: string;
 	/** Timeline length the verdict was computed for. A later action invalidates it. */
 	timelineLength: number;
+	/** Settings that decided which transitions were billable. A change invalidates the verdict. */
+	billingKey: string;
 	report: BacktestReport;
 }

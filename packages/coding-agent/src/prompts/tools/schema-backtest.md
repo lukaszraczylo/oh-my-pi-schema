@@ -4,6 +4,8 @@ This is certification. It answers one question exactly: does your theory reprodu
 
 The report gives `matched/checked` exact, the number skipped (entries the model declined to predict), coverage, and up to three pointed mismatches with the predicted and observed projections side by side.
 
+Coverage counts only world-changing transitions made with a gated tool (`coverage N/M world-changing`). Reads and searches never count, and planning and committing enforce the coverage floor only after `schema.coverageAfter` world-changing transitions. A `digest` that returns `null` skips the entry.
+
 A mismatch is not a failure, it is a location. Use it to find the wrong belief. If several revisions in a row patch rules without changing what the state is made of, change the representation instead.
 
 Run this after every `schema_model write`, and whenever new actions have landed on the timeline.

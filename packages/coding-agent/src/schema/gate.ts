@@ -19,6 +19,11 @@ export function observationOf(result: AgentToolResult): SchemaObservation {
 	return { ok: !toolResultHasError(result), text, details: result.details };
 }
 
+/** Attach Schema advice to a tool result without disturbing the tool's own content. */
+function withNotice(result: AgentToolResult, notice: string): AgentToolResult {
+	return { ...result, content: [...result.content, { type: "text", text: `\n\n[schema] ${notice}` }] };
+}
+
 function isSchemaTool(name: string): boolean {
 	return name.startsWith("schema_");
 }
@@ -29,9 +34,9 @@ function isSchemaTool(name: string): boolean {
  * Two invariants come from this wrapper. First, `record`: every real interaction is
  * appended to the append-only timeline, so certification always runs against the
  * complete history rather than against what survived the context window. Second, the
- * commit channel: a tool that changes the world runs only inside `schema_commit`,
- * which carries a prediction for it and stops the rest of the plan on the first
- * mismatch.
+ * commit channel: in strict mode a tool that changes the world runs only inside
+ * `schema_commit`, which carries a prediction for it and stops the rest of the plan on
+ * the first mismatch. Guided mode lets the call run and attaches advice instead.
  */
 export function wrapToolWithSchemaLoop<T extends AgentTool<any, any, any>>(session: ToolSession, tool: T): T {
 	if (!isSchemaEnabled(session) || kSchemaWrapped in tool) return tool;
@@ -48,7 +53,8 @@ export function wrapToolWithSchemaLoop<T extends AgentTool<any, any, any>>(sessi
 		context?: unknown,
 	): Promise<AgentToolResult> {
 		const runtime = SchemaRuntime.for(session);
-		if (runtime.gatedTools().has(tool.name)) runtime.assertCommitChannel(tool.name);
+		// Strict mode throws here; guided mode returns advice to attach to the result.
+		const notice = runtime.commitChannelNotice(tool.name);
 		try {
 			const result = (await (originalExecute as (...args: unknown[]) => Promise<AgentToolResult>)(
 				id,
@@ -60,7 +66,7 @@ export function wrapToolWithSchemaLoop<T extends AgentTool<any, any, any>>(sessi
 			// Inside a commit the queue records each step together with the projection it
 			// promised, so recording here would double-count the transition.
 			if (!runtime.committing) await runtime.record(tool.name, params, observationOf(result));
-			return result;
+			return notice === undefined ? result : withNotice(result, notice);
 		} catch (error) {
 			if (!runtime.committing) {
 				await runtime

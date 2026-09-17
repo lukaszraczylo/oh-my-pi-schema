@@ -123,8 +123,10 @@ through one gated channel.
 - `schema_commit` — the only channel to the world. The first misprediction voids the rest of the plan.
 - `schema_experiment` — rank candidate probes by how many rival hypotheses each separates.
 
-`edit`, `write`, and `ast_edit` run only inside a commit. `--no-schema` restores the
-free-form loop. The design follows <https://schema-harness.github.io/>; see
+In the default strict mode, `edit`, `write`, and `ast_edit` run only inside a commit.
+`--schema-mode guided` lets them run directly with advice, for weaker models, and
+`--no-schema` restores the free-form loop. A fresh session can commit its first change
+straight away: reads never count against coverage. The design follows <https://schema-harness.github.io/>; see
 [docs/schema-mode.md](docs/schema-mode.md).
 
 ## Every tool, _benchmaxxed_.

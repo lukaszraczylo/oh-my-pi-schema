@@ -107,7 +107,7 @@ const CONDITIONS: Record<string, () => boolean> = {
 	},
 	schemaEnabled: () => {
 		try {
-			return Settings.instance.get("schema.enabled") === true;
+			return Settings.instance.get("schema.enabled") === true && Settings.instance.get("schema.mode") !== "off";
 		} catch {
 			return false;
 		}

@@ -12,6 +12,7 @@ import { countEpicycles } from "@oh-my-pi/pi-coding-agent/schema/store";
 import { clampObservation, MAX_OBSERVATION_BYTES, Timeline } from "@oh-my-pi/pi-coding-agent/schema/timeline";
 import type { Hypothesis, ModelRevision } from "@oh-my-pi/pi-coding-agent/schema/types";
 import { createTools, type ToolSession } from "@oh-my-pi/pi-coding-agent/tools";
+import { judgeStep } from "@oh-my-pi/pi-coding-agent/tools/schema";
 import { removeWithRetries } from "@oh-my-pi/pi-utils";
 
 let workspace: string;
@@ -205,5 +206,119 @@ describe("epicycle detection", () => {
 			revision({ green: true, stateKeys: ["files"] }),
 		];
 		expect(countEpicycles(revisions)).toBe(0);
+	});
+});
+
+describe("schema modes", () => {
+	it("tells a strict-mode caller which call works instead", async () => {
+		const session = makeSession();
+		const tool = wrapToolWithSchemaLoop(
+			session,
+			stubTool("write", () => ({ content: [{ type: "text", text: "ok" }] })),
+		);
+		await expect(tool.execute("call-1", {}, undefined, undefined, undefined)).rejects.toThrow(
+			/Next call: `schema_commit`/,
+		);
+	});
+
+	it("lets guided mode run a world-changing tool directly, recorded and advised", async () => {
+		const session = makeSession({ "schema.mode": "guided" });
+		const runtime = SchemaRuntime.for(session);
+		const tool = wrapToolWithSchemaLoop(
+			session,
+			stubTool("edit", () => ({ content: [{ type: "text", text: "patched" }] })),
+		);
+		const result = await tool.execute("call-1", { path: "a.ts" }, undefined, undefined, undefined);
+		const texts = result.content.map(content => (content as { text: string }).text);
+		expect(texts[0]).toBe("patched");
+		expect(texts.at(-1)).toContain("[schema]");
+		expect((await runtime.timeline.entries()).map(entry => entry.tool)).toEqual(["edit"]);
+	});
+
+	it("removes the schema tools when schema.mode is off", async () => {
+		const names = (await createTools(makeSession({ "schema.mode": "off" }))).map(tool => tool.name);
+		expect(names.filter(name => name.startsWith("schema_"))).toEqual([]);
+	});
+});
+
+describe("commit step judgement", () => {
+	const succeeded = { ok: true, text: "done" };
+
+	it("checks the world model's prediction and turns a differing declaration into advice", () => {
+		const judgement = judgeStep(
+			0,
+			{ tool: "write", predict: "done" },
+			{ stale: false, skipped: false, match: true, predicted: "ok", observed: "ok" },
+			succeeded,
+		);
+		expect(judgement.surprise).toBeUndefined();
+		expect(judgement.predicted).toBe("ok");
+		expect(judgement.notices.join("\n")).toContain('world_model.js predicts "ok"');
+	});
+
+	it("checks an inline prediction when the world model declines", () => {
+		const matched = judgeStep(
+			0,
+			{ tool: "bash", predict: "exit=0" },
+			{ stale: false, skipped: true, observed: "exit=0" },
+			succeeded,
+		);
+		expect(matched.surprise).toBeUndefined();
+		expect(matched.match).toBe(true);
+
+		const missed = judgeStep(
+			1,
+			{ tool: "bash", predict: "exit=0" },
+			{ stale: false, skipped: true, observed: "exit=1" },
+			succeeded,
+		);
+		expect(missed.surprise).toContain('your inline prediction was "exit=0", observed "exit=1"');
+	});
+
+	it("flags a surprise when reality disagrees with the world model", () => {
+		const judgement = judgeStep(
+			2,
+			{ tool: "write" },
+			{ stale: false, skipped: false, match: false, predicted: "ok", observed: "error" },
+			succeeded,
+		);
+		expect(judgement.surprise).toContain('world_model.js expected "ok", observed "error"');
+	});
+
+	it("treats a failed step without a matched prediction as a surprise", () => {
+		const judgement = judgeStep(
+			0,
+			{ tool: "write" },
+			{ stale: false, skipped: true },
+			{ ok: false, text: "\nEISDIR: illegal operation on a directory\n    at open" },
+		);
+		expect(judgement.surprise).toBe("step 0 (write) failed: EISDIR: illegal operation on a directory");
+	});
+
+	it("accepts a failure the world model predicted", () => {
+		const judgement = judgeStep(
+			0,
+			{ tool: "bash" },
+			{ stale: false, skipped: false, match: true, predicted: "exit=1", observed: "exit=1" },
+			{ ok: false, text: "1 fail" },
+		);
+		expect(judgement.surprise).toBeUndefined();
+	});
+
+	it("does not compare an inline prediction when the world model could not run", () => {
+		const judgement = judgeStep(
+			0,
+			{ tool: "read", predict: "ok" },
+			{ stale: true, error: "ReferenceError: x is not defined" },
+			succeeded,
+		);
+		expect(judgement.surprise).toBeUndefined();
+		expect(judgement.notices.join("\n")).toContain("could not be run");
+	});
+
+	it("checks nothing when neither the model nor the step predicts", () => {
+		const judgement = judgeStep(0, { tool: "bash" }, { stale: false, skipped: true, observed: "exit=0" }, succeeded);
+		expect(judgement.surprise).toBeUndefined();
+		expect(judgement.notices).toEqual([]);
 	});
 });

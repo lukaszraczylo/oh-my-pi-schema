@@ -11,8 +11,24 @@ ARC-AGI-3 public set with the same model pairing that scores 42.83% under a
 general-purpose harness. The harness does not change the weights. It changes what the
 model must write down and what it must prove before it acts.
 
-Schema mode is on by default in `omps`. Use `--no-schema`, or set
-`schema.enabled false`, to run the stock loop instead.
+Schema mode is on by default in `omps`, in strict mode. Three modes are available through
+`schema.mode` or `--schema-mode`:
+
+- **strict** — `edit`, `write`, and `ast_edit` run only inside `schema_commit`.
+- **guided** — those tools also run directly. Each call is recorded and gets advice
+  attached, and certification problems become warnings. Use it for weaker models.
+- **off** — the stock loop. `--no-schema` and `schema.enabled false` do the same.
+
+## Your first session
+
+A fresh session can commit its first change immediately. Reads, searches, and other
+observation never count against coverage. The seed `world_model.js` predicts `ok` for a
+successful edit or write, so its first backtest is green. The coverage floor waits for
+`schema.coverageAfter` world-changing transitions (default 5). A failed edit or write
+digests to `null`: strict mode still voids the plan, but the failure never leaves a
+mismatch on the timeline. A project that still holds the previous, untouched seed is
+upgraded to the current seed on first use. Grow the model when a
+prediction would have saved a run, not before.
 
 ## The loop
 
@@ -23,7 +39,8 @@ Each cycle runs four stages.
 2. **Deliberate.** Revise `world_model.js` with `schema_model`, certify it with
    `schema_backtest`, and search it with `schema_plan`. None of these touch the world.
 3. **Execute.** `schema_commit` runs an ordered queue of actions. Each step carries the
-   projection the model expects. The first misprediction discards the rest of the queue.
+   projection the model expects. In strict mode, the first misprediction discards the rest
+   of the queue.
 4. **Record.** Every real transition is appended to `timeline.jsonl`. The agent can
    revise its theory. It can never revise what happened.
 
@@ -50,7 +67,7 @@ rediscovering the same mechanism.
 ```js
 function initialState() { return { /* the smallest state that explains the work */ }; }
 function step(state, action) { return { state: next, predict: "exit=0" }; }
-function digest(observation) { return observation.text.trim(); }
+function digest(observation, action) { return observation.ok ? "ok" : "error"; }
 function isGoal(state) { return state.buildGreen === true; }
 function actions(state) { return ["run tests", "apply patch"]; }
 function key(state) { return JSON.stringify(state); }
@@ -59,7 +76,9 @@ function key(state) { return JSON.stringify(state); }
 - `action` is `{ run, index, tool, args }`. `run` is the session id, so the model can
   compare two complete runs against each other.
 - `observation` is `{ ok, text, details }`.
-- `predict` is compared verbatim against `digest(observation)`.
+- `predict` is compared verbatim against `digest(observation, action)`.
+- `digest` may return `null` when an observation carries nothing to check, for example
+  a failed edit. The entry is then skipped: it is neither checked nor billed.
 - `predict: null` declines a prediction. Declining is honest, and it certifies nothing.
 
 The model runs inside the JS eval VM, which is reset before every replay. A stale
@@ -76,14 +95,32 @@ a 64×64 grid is the whole observable. Tool output is not: a model could pass ev
 check by predicting nothing. `schema.minCoverage` (default `0.5`) is the floor a model
 must clear before it may plan or commit, so a green backtest always means something.
 
+Coverage counts only **billable** transitions: steps made with a gated, world-changing
+tool (`schema.gatedTools`, plus `bash` when `schema.gateBash` is set), whether they ran
+inside `schema_commit` or directly in guided mode. A read or a test run sent through a
+commit is still not billed. Looking at the ARC grid costs nothing, and in the same way
+reads and searches never count, so exploring can never make certification harder. Two
+more rules keep the floor from stranding a session:
+
+- `schema.coverageAfter` (default `5`) — the floor applies only after this many billable
+  transitions. Before that, a backtest without mismatches is enough.
+- `schema.coverageScope` (default `session`) — only the current session's transitions
+  are billed. Earlier sessions are still replayed, and a mismatch there still fails
+  certification. Set it to `project` to bill every session.
+
+When certification fails, the error names the first mismatch or the unpredicted tools,
+and gives the call that fixes it.
+
 Planning and committing both require a green verdict. Search is complete only relative
 to the model it runs over. Over the wrong model, exhaustive search returns a confident
 wrong answer.
 
 ## The commit channel
 
-The tools named in `schema.gatedTools` (`edit`, `write`, `ast_edit` by default) run only
-inside `schema_commit`. Calling one directly is rejected with the loop it should follow.
+In strict mode, the tools named in `schema.gatedTools` (`edit`, `write`, `ast_edit` by
+default) run only inside `schema_commit`. Calling one directly is rejected, and the error
+names the commit call to use instead. Guided mode runs the call, records it, and attaches
+advice to the result.
 
 `bash` is not gated by default because it is the main observation channel as well as a
 mutation channel. Set `schema.gateBash true` to gate it too.
@@ -93,13 +130,18 @@ registry, so `edit` and `write` stay gated even in Code Mode, but raw filesystem
 inside the cell do not. Add `eval` to `schema.gatedTools` if a session needs that hole
 closed.
 
-Each step may carry its own `predict`. When it disagrees with what `world_model.js`
-predicts for that step, the plan stops: the belief being acted on was never written
-down, and an unwritten belief cannot be certified.
+Each step may carry its own `predict`. When `world_model.js` predicts the step, the
+model's prediction is checked, and a differing `predict` is returned as advice. When the
+model declines, the step's own `predict` is checked against reality instead. That lets a
+thin model take part, but only predictions in `step()` count toward coverage.
 
 Inside a commit, each step runs, is appended to the timeline, and is checked against the
-live model in the same VM. The first mismatch voids the remaining queue and returns the
-counterexample. A voided plan is evidence, not a retry.
+live model in the same VM. A step whose tool fails without a matched prediction is also a
+surprise. In strict mode the first surprise voids the remaining queue and returns the
+counterexample; guided mode records it and continues. `schema_commit` runs exclusively:
+other tool calls in the same turn wait for it, so none of them bypasses the gate or
+escapes the timeline while a commit is open. A voided plan is
+evidence, not a retry.
 
 The queue re-certifies when it finishes, so the next plan starts from a verdict that
 accounts for everything that just happened.
@@ -141,6 +183,9 @@ data; only one of them generalised.
 | Setting                     | Default                       | Effect                                                        |
 | --------------------------- | ----------------------------- | ------------------------------------------------------------- |
 | `schema.enabled`            | `true`                        | Run the Schema loop.                                          |
+| `schema.mode`               | `strict`                      | `strict`, `guided`, or `off`.                                 |
+| `schema.coverageAfter`      | `5`                           | Billable transitions before the coverage floor applies.       |
+| `schema.coverageScope`      | `session`                     | Bill this session's transitions, or the whole `project`'s.    |
 | `schema.gatedTools`         | `["edit","write","ast_edit"]` | Tools reachable only inside `schema_commit`.                   |
 | `schema.gateBash`           | `false`                       | Also gate `bash`.                                             |
 | `schema.minCoverage`        | `0.5`                         | Prediction coverage required before planning or committing.    |

@@ -12,6 +12,21 @@
 - Added Schema mode: keep the theory of a task in an executable `world_model.js`, certify it against every recorded transition with `schema_backtest`, search it for a plan with `schema_plan`, commit predicted actions through `schema_commit`, and rank discriminating probes with `schema_experiment`. See `docs/schema-mode.md`.
 - `schema_model status` counts consecutive rule-only revisions that left the state representation unchanged while the backtest stayed red, and advises changing the representation instead.
 - Added `--schema` / `--no-schema` and the `schema.*` settings (gated tools, coverage floor, search budgets, epicycle threshold, state directory).
+- Added `schema.mode` (`strict`, `guided`, `off`) and `--schema-mode`. Guided mode lets weaker models edit directly while every step is still recorded and certification problems come back as warnings.
+- Added `schema.coverageAfter` and `schema.coverageScope` to control when the coverage floor applies and which sessions count toward it.
+
+### Fixed
+
+- A fresh Schema session can commit its first edit: reads, searches, and other observation no longer count against prediction coverage, and the floor waits for `schema.coverageAfter` world-changing transitions.
+- The seed world model predicts `ok` for successful edits and writes, and its digest reduces test runs to exit code and pass/fail counts, so it certifies without hand-written code.
+- `schema_commit` checks a step's own `predict` when the world model declines, and reports a disagreement with the model as advice instead of voiding the plan.
+- Coverage counts only the current session's world-changing transitions by default, so earlier sessions no longer start a new one below the floor.
+- A failed edit or write no longer leaves a permanent mismatch that blocks every later strict-mode commit.
+- Guided commits against a failing world model still check each step, instead of reporting false mispredictions.
+- Projects that hold the previous, untouched seed `world_model.js` are upgraded to the new seed automatically.
+- `schema_commit` runs exclusively, so no other tool call in the same turn can bypass the gate or skip the timeline.
+- `--schema` turns Schema mode back on even when `schema.mode` is saved as `off`.
+- Certification errors name the first mismatch or the unpredicted tools, and the call that fixes them.
 
 ## [18.1.17] - 2026-09-10
 

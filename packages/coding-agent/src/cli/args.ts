@@ -38,6 +38,7 @@ export interface Args {
 	prewalk?: boolean;
 	schema?: boolean;
 	noSchema?: boolean;
+	schemaMode?: string;
 	noPrewalk?: boolean;
 	prewalkInto?: string;
 	planYolo?: boolean;

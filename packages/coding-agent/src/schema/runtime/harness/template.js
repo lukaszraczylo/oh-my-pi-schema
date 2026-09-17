@@ -69,9 +69,9 @@
 		}
 	}
 
-	function observationDigest(observation) {
+	function observationDigest(observation, action) {
 		if (model.digest) {
-			const value = model.digest(observation);
+			const value = model.digest(observation, action);
 			return value === null || value === undefined ? null : String(value);
 		}
 		return String(observation && observation.text !== undefined ? observation.text : "").trim();
@@ -84,6 +84,9 @@
 			skipped: 0,
 			matched: 0,
 			mismatches: [],
+			billable: 0,
+			billableChecked: 0,
+			uncovered: {},
 			coverage: 0,
 			green: false,
 			stateKeys: [],
@@ -112,20 +115,39 @@
 			}
 			if (outcome && typeof outcome === "object" && "state" in outcome) state = outcome.state;
 			const predicted = outcome && typeof outcome === "object" ? outcome.predict : undefined;
+			// Only world-changing transitions count toward coverage. Reading the world is free,
+			// so exploring can never make certification harder.
+			const billable = transition.billable === true;
 			if (predicted === null || predicted === undefined) {
 				report.skipped++;
+				if (billable) {
+					report.billable++;
+					const tool = transition.action.tool;
+					report.uncovered[tool] = (report.uncovered[tool] || 0) + 1;
+				}
 				continue;
 			}
-			report.checked++;
 			let observed;
 			try {
-				observed = observationDigest(transition.observation);
+				observed = observationDigest(transition.observation, transition.action);
 			} catch (error) {
 				report.error = "digest() threw on timeline entry " + transition.action.index + ": " + describe(error);
 				report.stateKeys = stateKeysOf(state);
 				return { report: report, state: state };
 			}
-			if (observed !== null && String(predicted) === String(observed)) {
+			// A null digest means the observation carries nothing to check, such as a failed
+			// edit. It is skipped outright: neither a mismatch nor a billed transition, so one
+			// failed call can never leave a permanent counterexample on the timeline.
+			if (observed === null) {
+				report.skipped++;
+				continue;
+			}
+			report.checked++;
+			if (billable) {
+				report.billable++;
+				report.billableChecked++;
+			}
+			if (String(predicted) === String(observed)) {
 				report.matched++;
 				continue;
 			}
@@ -134,11 +156,11 @@
 					seq: transition.action.index,
 					tool: transition.action.tool,
 					predicted: String(predicted).slice(0, 600),
-					observed: observed === null ? "(digest returned null)" : String(observed).slice(0, 600),
+					observed: String(observed).slice(0, 600),
 				});
 			}
 		}
-		report.coverage = report.total === 0 ? 0 : report.checked / report.total;
+		report.coverage = report.billable === 0 ? 1 : report.billableChecked / report.billable;
 		report.green = !report.error && report.checked === report.matched;
 		report.stateKeys = stateKeysOf(state);
 		try {
@@ -208,23 +230,37 @@
 		if (!live || !model.step) {
 			return { stale: true };
 		}
-		const outcome = model.step(live.state, request.action);
-		if (outcome && typeof outcome === "object" && "state" in outcome) live.state = outcome.state;
-		const predicted = outcome && typeof outcome === "object" ? outcome.predict : undefined;
-		const observed = observationDigest(request.observation);
-		const goalReached = model.isGoal ? Boolean(model.isGoal(live.state)) : false;
-		if (predicted === null || predicted === undefined) {
-			return { stale: false, skipped: true, match: true, goalReached: goalReached, stateKeys: stateKeysOf(live.state) };
+		try {
+			const outcome = model.step(live.state, request.action);
+			if (outcome && typeof outcome === "object" && "state" in outcome) live.state = outcome.state;
+			const predicted = outcome && typeof outcome === "object" ? outcome.predict : undefined;
+			const observed = observationDigest(request.observation, request.action);
+			const observedText = observed === null ? undefined : String(observed).slice(0, 600);
+			const goalReached = model.isGoal ? Boolean(model.isGoal(live.state)) : false;
+			// Unchecked when the model declines, or when the digest has nothing to compare. The
+			// digest still goes back, so the caller can check an inline prediction instead.
+			if (predicted === null || predicted === undefined || observed === null) {
+				return {
+					stale: false,
+					skipped: true,
+					observed: observedText,
+					goalReached: goalReached,
+					stateKeys: stateKeysOf(live.state),
+				};
+			}
+			return {
+				stale: false,
+				skipped: false,
+				match: String(predicted) === String(observed),
+				predicted: String(predicted).slice(0, 600),
+				observed: observedText,
+				goalReached: goalReached,
+				stateKeys: stateKeysOf(live.state),
+			};
+		} catch (error) {
+			// A model that throws cannot judge this step; the commit continues without it.
+			return { stale: true, error: describe(error).split("\n", 1)[0] };
 		}
-		return {
-			stale: false,
-			skipped: false,
-			match: observed !== null && String(predicted) === String(observed),
-			predicted: String(predicted).slice(0, 600),
-			observed: observed === null ? "(digest returned null)" : String(observed).slice(0, 600),
-			goalReached: goalReached,
-			stateKeys: stateKeysOf(live.state),
-		};
 	}
 
 	try {
@@ -235,7 +271,8 @@
 		const transitions = Array.isArray(request.transitions) ? request.transitions : [];
 		const replayed = replay(transitions);
 		if (request.op === "plan") {
-			if (!replayed.report.green) {
+			// Guided mode searches an uncertified model on request; the caller carries the warning.
+			if (replayed.report.error || (!replayed.report.green && request.allowUncertified !== true)) {
 				emit({
 					op: "plan",
 					backtest: replayed.report,
@@ -258,7 +295,9 @@
 			return;
 		}
 		if (request.op === "open") {
-			globalThis.__SCHEMA_LIVE__ = replayed.report.green ? { state: replayed.state } : undefined;
+			// Keep the model live even when its replay is red: guided commits still check each step
+			// against it. Only a model that threw during replay has no usable state.
+			globalThis.__SCHEMA_LIVE__ = replayed.report.error ? undefined : { state: replayed.state };
 			emit({ op: "open", backtest: replayed.report });
 			return;
 		}

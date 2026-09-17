@@ -106,7 +106,9 @@ function text(body: string): AgentToolResult["content"] {
 
 function requireSchemaMode(session: ToolSession): SchemaRuntime {
 	if (!isSchemaEnabled(session)) {
-		throw new ToolError("Schema mode is off for this session. Set `schema.enabled true` to use the schema tools.");
+		throw new ToolError(
+			"Schema mode is off for this session. Set `schema.mode` to `strict` or `guided` (with `schema.enabled` true) to use the schema tools.",
+		);
 	}
 	return SchemaRuntime.for(session);
 }
@@ -119,7 +121,8 @@ export function formatBacktest(report: BacktestReport): string {
 			`${report.mismatches.length} mismatch(es), ${report.skipped} skipped of ${report.total} recorded.`,
 	);
 	lines.push(
-		`coverage ${(report.coverage * 100).toFixed(0)}% · state keys [${report.stateKeys.join(", ")}] · ` +
+		`coverage ${report.billableChecked}/${report.billable} world-changing (${(report.coverage * 100).toFixed(0)}%) · ` +
+			`state keys [${report.stateKeys.join(", ")}] · ` +
 			`is_goal ${report.goalReached ? "true" : "false"} · ${report.green ? "GREEN" : "NOT CERTIFIED"}`,
 	);
 	if (report.error) lines.push(`error: ${report.error}`);
@@ -188,9 +191,13 @@ export class SchemaModelTool implements AgentTool<typeof schemaModelSchema, Sche
 		}
 
 		if (action === "read") {
-			const { source, seeded } = await store.readModel();
+			const { source, seeded, upgraded } = await store.readModel();
 			const notes = await store.readNotes();
-			const header = seeded ? "world_model.js did not exist; the scaffold below was created.\n\n" : "";
+			const header = seeded
+				? "world_model.js did not exist; the scaffold below was created.\n\n"
+				: upgraded
+					? "world_model.js was the untouched earlier seed; it was upgraded to the current seed below.\n\n"
+					: "";
 			return {
 				content: text(`${header}--- world_model.js ---\n${source}\n\n--- notes.md ---\n${notes || "(empty)"}`),
 				details: { action },
@@ -296,15 +303,13 @@ export class SchemaPlanTool implements AgentTool<typeof schemaPlanSchema, Schema
 	): Promise<AgentToolResult<SchemaPlanDetails>> {
 		const runtime = requireSchemaMode(this.session);
 		throwIfAborted(signal);
-		await runtime.requireCertification(signal);
+		const { warnings } = await runtime.requireCertification(signal);
 		const { source } = await runtime.store.readModel();
-		const transitions = (await runtime.timeline.transitions()).map(entry => ({
-			action: entry.action,
-			observation: entry.observation,
-		}));
+		const transitions = await runtime.harnessTransitions();
 		const limits = {
 			maxNodes: Math.max(1, Math.trunc(params.maxNodes ?? this.session.settings.get("schema.maxSearchNodes"))),
 			maxDepth: Math.max(1, Math.trunc(params.maxDepth ?? this.session.settings.get("schema.maxPlanDepth"))),
+			allowUncertified: runtime.mode === "guided",
 		};
 		const { plan } = await planInWorldModel(this.session, source, transitions, limits, signal);
 		if (plan.error) throw new ToolError(plan.error);
@@ -316,11 +321,88 @@ export class SchemaPlanTool implements AgentTool<typeof schemaPlanSchema, Schema
 			? `${header}\n${JSON.stringify(plan.actions, null, "\t")}`
 			: `${header}\nSearch is only complete relative to this model. If the goal is genuinely reachable, ` +
 				"the missing piece is in the representation: an object, a state variable, or a transition you have not encoded.";
-		return { content: text(body), details: { plan } };
+		const advisory = warnings.length > 0 ? `\n\n${warnings.join("\n")}` : "";
+		return { content: text(body + advisory), details: { plan } };
 	}
 }
 
-/** The only channel from thinking to action. */
+/** How one committed step was checked. */
+export interface StepJudgement {
+	/** The prediction that was checked, if any. */
+	predicted?: string;
+	match?: boolean;
+	/** Why the step counts as a surprise. Undefined when reality agreed or nothing was predicted. */
+	surprise?: string;
+	notices: string[];
+}
+
+/** The first non-empty line of a tool's output, for surprise messages. */
+function firstLine(text: string): string {
+	return (text.split("\n").find(line => line.trim() !== "") ?? "").trim().slice(0, 200);
+}
+
+/**
+ * Decide what a committed step was checked against. world_model.js is the authority when
+ * it predicts. When it declines, the step's own `predict` is checked instead, so a model
+ * that is still thin can take part in the loop. A disagreement between the two is advice,
+ * not a failure: only reality voids a plan. A step whose tool failed is a surprise unless a
+ * prediction anticipated the failure, and a model that could not run judges nothing.
+ */
+export function judgeStep(
+	index: number,
+	step: { tool: string; predict?: string },
+	verdict: AdvanceResult,
+	observation: { ok: boolean; text: string },
+): StepJudgement {
+	const label = `step ${index} (${step.tool})`;
+	const failure = observation.ok ? undefined : `${label} failed: ${firstLine(observation.text)}`;
+	if (verdict.stale) {
+		const reason = verdict.error ? ` (${verdict.error})` : "";
+		return {
+			surprise: failure,
+			notices: [`${label}: world_model.js could not be run for this step${reason}, so no prediction was checked.`],
+		};
+	}
+	if (verdict.skipped !== true && verdict.predicted !== undefined) {
+		const disagrees = step.predict !== undefined && step.predict !== verdict.predicted;
+		return {
+			predicted: verdict.predicted,
+			match: verdict.match === true,
+			surprise:
+				verdict.match === true
+					? undefined
+					: `${label} mispredicted: world_model.js expected "${verdict.predicted}", observed "${verdict.observed}"`,
+			notices: disagrees
+				? [
+						`${label}: you declared "${step.predict}" but world_model.js predicts "${verdict.predicted}"; ` +
+							"the model's prediction was checked. If yours is right, update step().",
+					]
+				: [],
+		};
+	}
+	if (step.predict !== undefined && verdict.observed !== undefined) {
+		const match = verdict.observed === step.predict;
+		if (!match) {
+			return {
+				predicted: step.predict,
+				match,
+				surprise: `${label} mispredicted: your inline prediction was "${step.predict}", observed "${verdict.observed}"`,
+				notices: [],
+			};
+		}
+		return {
+			predicted: step.predict,
+			match,
+			notices: [
+				`${label}: inline prediction "${step.predict}" matched, but world_model.js declined to predict it — ` +
+					"encode it in step() so certification covers it.",
+			],
+		};
+	}
+	return { surprise: failure, notices: [] };
+}
+
+/** The predicted channel from thinking to action; in strict mode, the only one. */
 export class SchemaCommitTool implements AgentTool<typeof schemaCommitSchema, SchemaCommitDetails> {
 	readonly name = "schema_commit";
 	readonly approval = "write" as const;
@@ -330,6 +412,8 @@ export class SchemaCommitTool implements AgentTool<typeof schemaCommitSchema, Sc
 	readonly strict = true;
 	readonly loadMode = "essential" as const;
 	readonly summary = "Execute a predicted plan against the world, stopping on the first surprise";
+	/** Runs alone: another tool call in the same turn could otherwise slip past the open gate or the timeline. */
+	readonly concurrency = "exclusive";
 
 	constructor(private readonly session: ToolSession) {}
 
@@ -347,19 +431,17 @@ export class SchemaCommitTool implements AgentTool<typeof schemaCommitSchema, Sc
 		const runtime = requireSchemaMode(this.session);
 		throwIfAborted(signal);
 		if (params.steps.length === 0) throw new ToolError("`steps` is empty: a commit must carry at least one action.");
-		await runtime.requireCertification(signal);
+		const { warnings } = await runtime.requireCertification(signal);
+		const guided = runtime.mode === "guided";
 
 		const { source } = await runtime.store.readModel();
-		const history = (await runtime.timeline.transitions()).map(entry => ({
-			action: entry.action,
-			observation: entry.observation,
-		}));
-		await openLiveModel(this.session, source, history, signal);
+		await openLiveModel(this.session, source, await runtime.harnessTransitions(), signal);
 
 		const outcomes: SchemaCommitStepOutcome[] = [];
-		const notices: string[] = [];
+		const notices: string[] = [...warnings];
+		const surprises: string[] = [];
 		let voided = false;
-		let voidReason = "";
+		let liveModel = true;
 
 		await runtime.withCommitChannel(async () => {
 			for (const [index, step] of params.steps.entries()) {
@@ -398,33 +480,34 @@ export class SchemaCommitTool implements AgentTool<typeof schemaCommitSchema, Sc
 
 				const seq = await runtime.timeline.length();
 				const action: SchemaAction = { run: runtime.runId, index: seq, tool: step.tool, args: validated };
-				const verdict = await this.#checkStep(runtime, source, action, observation, signal);
-				// The written model is the authority. A declared projection that disagrees with
-				// it means the belief being acted on was never encoded, so the plan stops here.
-				const declaredConflict =
-					step.predict !== undefined && verdict.predicted !== undefined && step.predict !== verdict.predicted;
-				if (step.predict !== undefined && verdict.skipped === true) {
-					notices.push(
-						`step ${index} (${step.tool}) declared "${step.predict}" but world_model.js declined to predict it — ` +
-							"encode that belief in step() so it can be certified.",
-					);
-				}
-				const surprise = verdict.match === false || declaredConflict;
-				await runtime.record(step.tool, validated, observation, step.predict ?? null, surprise);
+				const verdict: AdvanceResult = liveModel
+					? await this.#checkStep(runtime, source, action, observation, signal)
+					: { stale: true };
+				// A model that cannot run is not retried for the rest of the queue: every retry is a
+				// full replay, and the answer does not change within one commit.
+				if (verdict.stale) liveModel = false;
+				const judgement = judgeStep(index, step, verdict, observation);
+				notices.push(...judgement.notices);
+				await runtime.record(step.tool, validated, observation, {
+					predicted: judgement.predicted ?? null,
+					surprise: judgement.surprise !== undefined,
+					committed: true,
+				});
 				outcomes.push({
 					index,
 					tool: step.tool,
 					executed: true,
-					match: verdict.match,
-					predicted: verdict.predicted,
+					match: judgement.match,
+					predicted: judgement.predicted,
 					observed: verdict.observed,
 					error: observation.ok ? undefined : observation.text.split("\n", 1)[0],
 				});
-				if (surprise) {
+				if (judgement.surprise === undefined) continue;
+				surprises.push(judgement.surprise);
+				// Strict mode stops at the first surprise. Guided mode records the counterexample
+				// and keeps executing, so a weak model is never stranded halfway through a plan.
+				if (!guided) {
 					voided = true;
-					voidReason = declaredConflict
-						? `step ${index} (${step.tool}) declared "${step.predict}" while world_model.js predicts "${verdict.predicted}" — your stated expectation and your written theory disagree`
-						: `step ${index} (${step.tool}) mispredicted: expected ${verdict.predicted}, observed ${verdict.observed}`;
 					break;
 				}
 			}
@@ -434,16 +517,25 @@ export class SchemaCommitTool implements AgentTool<typeof schemaCommitSchema, Sc
 			outcomes.push({ index, tool: params.steps[index].tool, executed: false });
 		}
 
-		if (voided) runtime.voidPlan(voidReason);
+		if (voided) runtime.voidPlan(surprises[0]);
 		else runtime.clearVoidedPlan();
 
 		const recertified = await runtime.certify(signal);
 		const executed = outcomes.filter(outcome => outcome.executed).length;
-		const summary = voided
-			? `Plan voided after ${executed}/${params.steps.length} step(s). ${voidReason}.\n` +
+		let summary: string;
+		if (voided) {
+			summary =
+				`Plan voided after ${executed}/${params.steps.length} step(s). ${surprises[0]}.\n` +
 				"Reality outranks the model: take this counterexample to `schema_model`, fix the belief it refutes, " +
-				"then re-certify and search again."
-			: `All ${executed} step(s) executed with 0 mispredictions.`;
+				"then re-certify and search again.";
+		} else if (surprises.length > 0) {
+			summary =
+				`All ${executed} step(s) executed; ${surprises.length} surprise(s) recorded (guided mode keeps going):\n` +
+				`${surprises.map(surprise => `- ${surprise}`).join("\n")}\n` +
+				"Fix the beliefs they refute in `schema_model`.";
+		} else {
+			summary = `All ${executed} step(s) executed with 0 mispredictions.`;
+		}
 		const noticeBlock = notices.length > 0 ? `${notices.join("\n")}\n\n` : "";
 		return {
 			content: text(`${summary}\n\n${noticeBlock}${formatBacktest(recertified)}`),
@@ -452,7 +544,7 @@ export class SchemaCommitTool implements AgentTool<typeof schemaCommitSchema, Sc
 		};
 	}
 
-	/** Advance the live model, falling back to a full replay if the VM lost it. */
+	/** Advance the live model, reopening it once if the VM lost it. A model that threw is not replayed again. */
 	async #checkStep(
 		runtime: SchemaRuntime,
 		source: string,
@@ -461,12 +553,8 @@ export class SchemaCommitTool implements AgentTool<typeof schemaCommitSchema, Sc
 		signal?: AbortSignal,
 	): Promise<AdvanceResult> {
 		const verdict = await advanceLiveModel(this.session, action, observation, signal);
-		if (!verdict.stale) return verdict;
-		const history = (await runtime.timeline.transitions()).map(entry => ({
-			action: entry.action,
-			observation: entry.observation,
-		}));
-		await openLiveModel(this.session, source, history, signal);
+		if (!verdict.stale || verdict.error !== undefined) return verdict;
+		await openLiveModel(this.session, source, await runtime.harnessTransitions(), signal);
 		return await advanceLiveModel(this.session, action, observation, signal);
 	}
 }

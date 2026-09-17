@@ -27,6 +27,10 @@ export const launchHelp = {
 		"no-schema": Flags.boolean({
 			description: "Leave the Schema loop and call world-changing tools directly, like stock omp",
 		}),
+		"schema-mode": Flags.string({
+			description:
+				"Schema enforcement for this session: strict (edits only inside schema_commit), guided (direct edits allowed, recorded and advised), or off",
+		}),
 		prewalk: Flags.boolean({
 			description:
 				"Switch from the active model to a fast/cheap model at the first edit/write after the plan's todo list exists (default off; see prewalk.enabled)",

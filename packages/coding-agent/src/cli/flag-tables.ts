@@ -146,6 +146,9 @@ export const STRING_SETTERS: Record<string, StringSetter> = {
 	"--prewalk-into": (result, value) => {
 		result.prewalkInto = value;
 	},
+	"--schema-mode": (result, value) => {
+		result.schemaMode = value;
+	},
 	"--plan-yolo-into": (result, value) => {
 		result.planYoloInto = value;
 	},

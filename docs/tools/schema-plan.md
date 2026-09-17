@@ -28,10 +28,10 @@
 `details.plan` carries the `PlanReport`.
 
 ## Flow
-1. `requireCertification` runs (or reuses) a backtest. A red verdict, or coverage below `schema.minCoverage`, raises a `ToolError` naming the shortfall.
+1. `requireCertification` runs (or reuses) a backtest. A red verdict, or coverage below `schema.minCoverage` once `schema.coverageAfter` committed transitions exist, raises a `ToolError` naming the shortfall and the next call. Guided mode returns the same problems as warnings.
 2. The harness replays the timeline, then searches from that final state over `actions(state)` and `step(state, action)`, deduplicating with `key(state)`.
 3. The returned sequence is the input to `schema_commit`, one step at a time, each carrying its projection.
 
 ## Failure modes
 - `world_model.js` without `isGoal` or `actions` cannot be searched; the tool raises the harness error verbatim.
-- The harness refuses to search when the replay is not green, so a stale certification can never silently produce a plan.
+- In strict mode the harness refuses to search when the replay is not green, so a stale certification can never silently produce a plan. Guided mode searches anyway and appends the warning.

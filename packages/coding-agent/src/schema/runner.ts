@@ -9,6 +9,8 @@ const RESULT_SENTINEL = "__SCHEMA_RESULT__";
 export interface HarnessTransition {
 	action: SchemaAction;
 	observation: SchemaObservation;
+	/** Counts toward coverage: committed or world-changing, within the configured scope. Reads never do. */
+	billable?: boolean;
 }
 
 interface HarnessRequest {
@@ -18,6 +20,8 @@ interface HarnessRequest {
 	observation?: SchemaObservation;
 	maxNodes?: number;
 	maxDepth?: number;
+	/** Search even when the replay is not green. Guided mode only. */
+	allowUncertified?: boolean;
 }
 
 interface HarnessPayload {
@@ -121,12 +125,18 @@ export async function planInWorldModel(
 	session: ToolSession,
 	modelSource: string,
 	transitions: HarnessTransition[],
-	limits: { maxNodes: number; maxDepth: number },
+	limits: { maxNodes: number; maxDepth: number; allowUncertified?: boolean },
 	signal?: AbortSignal,
 ): Promise<{ report: BacktestReport; plan: PlanReport; stdout: string }> {
 	const { payload, stdout } = await runHarness(
 		session,
-		{ op: "plan", transitions, maxNodes: limits.maxNodes, maxDepth: limits.maxDepth },
+		{
+			op: "plan",
+			transitions,
+			maxNodes: limits.maxNodes,
+			maxDepth: limits.maxDepth,
+			allowUncertified: limits.allowUncertified,
+		},
 		{ modelSource, reset: true, signal },
 	);
 	if (!payload.backtest || !payload.plan) throw new WorldModelRunError("world_model.js returned no plan report.");

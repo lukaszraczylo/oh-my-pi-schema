@@ -1261,6 +1261,20 @@ export async function buildSessionOptions(
 	}
 	if (parsed.schema || parsed.noSchema) {
 		activeSettings.override("schema.enabled", parsed.schema === true);
+		// A saved `schema.mode off` would otherwise make `--schema` a silent no-op.
+		if (parsed.schema && activeSettings.get("schema.mode") === "off")
+			activeSettings.override("schema.mode", "strict");
+	}
+	const requestedSchemaMode = parsed.schemaMode;
+	if (requestedSchemaMode !== undefined) {
+		if (requestedSchemaMode !== "strict" && requestedSchemaMode !== "guided" && requestedSchemaMode !== "off") {
+			throw new Error(`--schema-mode must be strict, guided, or off (got "${requestedSchemaMode}")`);
+		}
+		if (parsed.noSchema && requestedSchemaMode !== "off") {
+			throw new Error("--no-schema cannot be combined with --schema-mode strict or guided");
+		}
+		activeSettings.override("schema.mode", requestedSchemaMode);
+		if (requestedSchemaMode !== "off") activeSettings.override("schema.enabled", true);
 	}
 
 	if (parsed.noPrewalk && (parsed.prewalk || parsed.prewalkInto !== undefined)) {
