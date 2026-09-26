@@ -14,7 +14,9 @@ import schemaModelDescription from "../prompts/tools/schema-model.md" with { typ
 import schemaPlanDescription from "../prompts/tools/schema-plan.md" with { type: "text" };
 import type { ToolSession } from ".";
 import { getSessionTool } from "./tool-dispatch";
-import { ToolError, throwIfAborted } from "./tool-errors";
+import { throwIfAborted } from "./tool-errors";
+import { ToolError } from "@oh-my-pi/pi-tui/tools/tool-errors";
+import { cfgSchemaEpicycleThreshold, cfgSchemaMaxPlanDepth, cfgSchemaMaxSearchNodes } from "../schema/settings";
 
 const TIMELINE_TAIL_DEFAULT = 20;
 
@@ -238,7 +240,7 @@ export class SchemaModelTool implements AgentTool<typeof schemaModelSchema, Sche
 			`hypotheses on record: ${ledger.hypotheses.length}`,
 		];
 		if (runtime.voidedPlan) lines.push(`voided plan: ${runtime.voidedPlan}`);
-		if (epicycles >= this.session.settings.get("schema.epicycleThreshold")) {
+		if (epicycles >= cfgSchemaEpicycleThreshold.get(this.session)) {
 			lines.push(
 				`epicycles: ${epicycles} consecutive revisions patched rules without changing the state representation ` +
 					"while the backtest stayed red. Change what the state is made of, not the rule.",
@@ -307,8 +309,8 @@ export class SchemaPlanTool implements AgentTool<typeof schemaPlanSchema, Schema
 		const { source } = await runtime.store.readModel();
 		const transitions = await runtime.harnessTransitions();
 		const limits = {
-			maxNodes: Math.max(1, Math.trunc(params.maxNodes ?? this.session.settings.get("schema.maxSearchNodes"))),
-			maxDepth: Math.max(1, Math.trunc(params.maxDepth ?? this.session.settings.get("schema.maxPlanDepth"))),
+			maxNodes: Math.max(1, Math.trunc(params.maxNodes ?? cfgSchemaMaxSearchNodes.get(this.session))),
+			maxDepth: Math.max(1, Math.trunc(params.maxDepth ?? cfgSchemaMaxPlanDepth.get(this.session))),
 			allowUncertified: runtime.mode === "guided",
 		};
 		const { plan } = await planInWorldModel(this.session, source, transitions, limits, signal);

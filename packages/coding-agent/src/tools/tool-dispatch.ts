@@ -1,7 +1,7 @@
 import type { AgentTool, AgentToolResult } from "@oh-my-pi/pi-agent-core";
 import { isRecord } from "@oh-my-pi/pi-utils";
 import type { ToolSession } from ".";
-import { ToolError } from "./tool-errors";
+import { ToolError } from "@oh-my-pi/pi-tui/tools/tool-errors";
 
 /**
  * True when a tool reported failure without throwing. Both the top-level `isError`

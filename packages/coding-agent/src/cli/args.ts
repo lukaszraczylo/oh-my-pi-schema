@@ -5,7 +5,7 @@ import * as path from "node:path";
 import { $env, APP_NAME, logger } from "@oh-my-pi/pi-utils";
 import chalk from "@oh-my-pi/pi-utils/chalk";
 import type { ServiceTierOpenAISettingValue } from "../config/service-tier";
-import { CLI_THINKING_LEVELS, type ConfiguredThinkingLevel, parseCliThinkingLevel } from "../thinking";
+import { CLI_THINKING_LEVELS, type ConfiguredThinkingLevel, parseCliThinkingLevel } from "@oh-my-pi/pi-tui/thinking";
 import { normalizeToolNames } from "../tools/builtin-names";
 import {
 	OPTIONAL_FLAGS,
@@ -46,6 +46,7 @@ export interface Args {
 	maxTime?: number;
 	apiKey?: string;
 	systemPrompt?: string;
+	systemPromptTemplate?: string;
 	appendSystemPrompt?: string;
 	thinking?: ConfiguredThinkingLevel;
 	serviceTier?: ServiceTierOpenAISettingValue;
@@ -83,6 +84,8 @@ export interface Args {
 	skills?: string[];
 	noRules?: boolean;
 	noTitle?: boolean;
+	/** `--mode rpc` only: run extensions without a UI so no `extension_ui_request` dialogs reach the host. */
+	noUi?: boolean;
 	autoApprove?: boolean;
 	approvalMode?: "always-ask" | "write" | "yolo";
 	messages: string[];
@@ -283,6 +286,8 @@ export function parseArgs(inputArgs: string[], extensionFlags?: Map<string, { ty
 			result.noRules = true;
 		} else if (arg === "--no-title") {
 			result.noTitle = true;
+		} else if (arg === "--no-ui") {
+			result.noUi = true;
 		} else if (arg === "--auto-approve" || arg === "--yolo") {
 			result.autoApprove = true;
 		} else if (arg.startsWith("@")) {
@@ -336,6 +341,9 @@ export function parseArgs(inputArgs: string[], extensionFlags?: Map<string, { ty
 		}
 	}
 
+	if (result.systemPrompt !== undefined && result.systemPromptTemplate !== undefined) {
+		throw new CliUsageError("--system-prompt and --system-prompt-template cannot be combined");
+	}
 	return result;
 }
 

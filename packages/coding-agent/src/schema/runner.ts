@@ -1,5 +1,6 @@
 import { executeJs } from "../eval/js/executor";
 import type { ToolSession } from "../tools";
+import { cfgSchemaTimeoutMs } from "./settings";
 import harnessSource from "./runtime/harness/template.js" with { type: "text" };
 import type { AdvanceResult, BacktestReport, PlanReport, SchemaAction, SchemaObservation } from "./types";
 
@@ -83,7 +84,7 @@ async function runHarness(
 		kernelOwnerId: session.getSessionId?.() ?? undefined,
 		cwd: session.cwd,
 		reset: options.reset,
-		timeoutMs: session.settings.get("schema.timeoutMs"),
+		timeoutMs: cfgSchemaTimeoutMs.get(session),
 		signal: options.signal,
 	});
 	const parsed = extractResult(result.output);

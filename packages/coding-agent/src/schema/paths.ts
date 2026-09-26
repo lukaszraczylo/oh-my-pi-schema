@@ -1,5 +1,6 @@
 import * as path from "node:path";
 import type { ToolSession } from "../tools";
+import { cfgSchemaStateDir } from "./settings";
 
 /** Directory name schema-mode state lives under, relative to the project root. */
 export const SCHEMA_DIR_NAME = path.join(".omp", "schema");
@@ -25,7 +26,7 @@ export interface SchemaPaths {
  * work rather than rediscovering it. `schema.stateDir` overrides the location.
  */
 export function resolveSchemaPaths(session: ToolSession): SchemaPaths {
-	const configured = session.settings.get("schema.stateDir")?.trim();
+	const configured = cfgSchemaStateDir.get(session)?.trim();
 	const root = configured ? path.resolve(session.cwd, configured) : path.join(session.cwd, SCHEMA_DIR_NAME);
 	return {
 		root,

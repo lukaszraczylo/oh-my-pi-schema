@@ -2,7 +2,8 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import { type SettingPath, Settings } from "@oh-my-pi/pi-coding-agent/config/settings";
+import { Settings } from "@oh-my-pi/pi-coding-agent/config/settings";
+import { cfgSchemaCoverageScope } from "@oh-my-pi/pi-coding-agent/schema/settings";
 import { SchemaRuntime } from "@oh-my-pi/pi-coding-agent/schema/state";
 import { createTools, type ToolSession } from "@oh-my-pi/pi-coding-agent/tools";
 import { SchemaBacktestTool, SchemaModelTool, SchemaPlanTool } from "@oh-my-pi/pi-coding-agent/tools/schema";
@@ -14,7 +15,7 @@ import { removeWithRetries } from "@oh-my-pi/pi-utils";
 
 let workspace: string;
 
-function makeSession(overrides: Partial<Record<SettingPath, unknown>> = {}, runId = "run-a"): ToolSession {
+function makeSession(overrides: Record<string, unknown> = {}, runId = "run-a"): ToolSession {
 	return {
 		cwd: workspace,
 		hasUI: false,
@@ -177,7 +178,7 @@ describe("coverage billing", () => {
 		await new SchemaModelTool(current).execute("seed", { action: "read" });
 		expect((await runtime.requireCertification()).warnings).toEqual([]);
 
-		current.settings.set("schema.coverageScope", "project");
+		cfgSchemaCoverageScope.set(current.settings, "project");
 		await expect(runtime.requireCertification()).rejects.toThrow(/predicts 0 of 3 world-changing transitions/);
 	}, 60_000);
 });

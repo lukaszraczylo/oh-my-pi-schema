@@ -3,7 +3,7 @@ import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 import type { AgentTool, AgentToolResult } from "@oh-my-pi/pi-agent-core";
-import { type SettingPath, Settings } from "@oh-my-pi/pi-coding-agent/config/settings";
+import { Settings } from "@oh-my-pi/pi-coding-agent/config/settings";
 import { rankExperiments } from "@oh-my-pi/pi-coding-agent/schema/experiment";
 import { wrapToolWithSchemaLoop } from "@oh-my-pi/pi-coding-agent/schema/gate";
 import { resolveSchemaPaths } from "@oh-my-pi/pi-coding-agent/schema/paths";
@@ -17,7 +17,7 @@ import { removeWithRetries } from "@oh-my-pi/pi-utils";
 
 let workspace: string;
 
-function makeSession(settingsOverrides: Partial<Record<SettingPath, unknown>> = {}): ToolSession {
+function makeSession(settingsOverrides: Record<string, unknown> = {}): ToolSession {
 	return {
 		cwd: workspace,
 		hasUI: false,

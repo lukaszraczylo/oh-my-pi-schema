@@ -1,6 +1,15 @@
 import type { ToolSession } from "../tools";
-import { ToolError } from "../tools/tool-errors";
+import { ToolError } from "@oh-my-pi/pi-tui/tools/tool-errors";
 import { resolveSchemaPaths } from "./paths";
+import {
+	cfgSchemaCoverageAfter,
+	cfgSchemaCoverageScope,
+	cfgSchemaEnabled,
+	cfgSchemaGateBash,
+	cfgSchemaGatedTools,
+	cfgSchemaMinCoverage,
+	cfgSchemaMode,
+} from "./settings";
 import { backtestWorldModel, type HarnessTransition } from "./runner";
 import { modelHash, SchemaStore } from "./store";
 import { Timeline } from "./timeline";
@@ -36,9 +45,9 @@ export interface CertificationOutcome {
  * `createTools` can ask the same question before a runtime exists.
  */
 export function gatedToolNames(session: ToolSession): Set<string> {
-	const configured = session.settings.get("schema.gatedTools");
+	const configured = cfgSchemaGatedTools.get(session);
 	const names = new Set<string>(configured.length > 0 ? configured : DEFAULT_GATED_TOOLS);
-	if (session.settings.get("schema.gateBash")) names.add("bash");
+	if (cfgSchemaGateBash.get(session)) names.add("bash");
 	return names;
 }
 
@@ -47,8 +56,8 @@ export function gatedToolNames(session: ToolSession): Set<string> {
  * on/off switch keeps working.
  */
 export function schemaMode(session: ToolSession): SchemaMode {
-	if (session.settings.get("schema.enabled") !== true) return "off";
-	return session.settings.get("schema.mode");
+	if (cfgSchemaEnabled.get(session) !== true) return "off";
+	return cfgSchemaMode.get(session);
 }
 
 /** True when this session runs the Schema control loop rather than the free-form loop. */
@@ -215,7 +224,7 @@ export class SchemaRuntime {
 	 */
 	async harnessTransitions(): Promise<HarnessTransition[]> {
 		const gated = this.gatedTools();
-		const sessionScoped = this.#session.settings.get("schema.coverageScope") === "session";
+		const sessionScoped = cfgSchemaCoverageScope.get(this.#session) === "session";
 		const runId = this.runId;
 		return (await this.#timeline.transitions()).map(({ action, observation, recorded }) => ({
 			action,
@@ -226,7 +235,7 @@ export class SchemaRuntime {
 
 	/** The settings a certification verdict depends on beyond the model and the timeline. */
 	#billingKey(): string {
-		const scope = this.#session.settings.get("schema.coverageScope");
+		const scope = cfgSchemaCoverageScope.get(this.#session);
 		return [scope, this.runId, ...[...this.gatedTools()].sort()].join("|");
 	}
 
@@ -275,8 +284,8 @@ export class SchemaRuntime {
 		const report = cached?.report ?? (await this.certify(signal));
 		const problems: string[] = [];
 		if (!report.green) problems.push(describeMismatch(report));
-		const minimum = this.#session.settings.get("schema.minCoverage");
-		const after = this.#session.settings.get("schema.coverageAfter");
+		const minimum = cfgSchemaMinCoverage.get(this.#session);
+		const after = cfgSchemaCoverageAfter.get(this.#session);
 		if (report.billable >= after && report.coverage < minimum) {
 			problems.push(describeCoverageGap(report, minimum, after));
 		}
