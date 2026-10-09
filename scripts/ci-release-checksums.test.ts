@@ -12,14 +12,6 @@ afterEach(async () => {
 });
 
 describe("formatChecksums", () => {
-	it("sorts entries by basename and formats as `sha256sum -c`-compatible lines", () => {
-		const output = formatChecksums([
-			{ name: "omps-linux-x64", sha256: "b".repeat(64) },
-			{ name: "omps-darwin-arm64", sha256: "a".repeat(64) },
-		]);
-		expect(output).toBe(`${"a".repeat(64)}  omps-darwin-arm64\n${"b".repeat(64)}  omps-linux-x64\n`);
-	});
-
 	it("hashes assets and writes a sorted checksum manifest", async () => {
 		const dir = await mkdtemp(path.join(tmpdir(), "omp-release-checksums-"));
 		tempDirs.push(dir);

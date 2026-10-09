@@ -325,7 +325,7 @@ export interface ToolSession {
 	restrictToolNames?: boolean;
 	/** Task recursion depth (0 = top-level, 1 = first child, etc.) */
 	taskDepth?: number;
-	/** Get shared eval executor session ID. Subagents inherit this to share JS/Python state. */
+	/** Get this agent's eval executor session ID; keys its retained JS/Python/Ruby/Julia state. */
 	getEvalSessionId?: () => string | null;
 	/** Get session file */
 	getSessionFile: () => string | null;
@@ -339,6 +339,12 @@ export interface ToolSession {
 	getEvalKernelOwnerId?: () => string | null;
 	/** Current enabled eval prelude definitions. */
 	getEvalPreludes?: () => readonly EvalPreludeDefinition[];
+	/**
+	 * Eval preludes frozen into the system prompt and eval description at the
+	 * last base rebuild. Mid-session toggles ride a hidden notice instead of
+	 * rewriting the provider cache prefix.
+	 */
+	getAdvertisedEvalPreludes?: () => readonly EvalPreludeDefinition[];
 	/** Reject new eval work once session disposal has started. */
 	assertEvalExecutionAllowed?: () => void;
 	/** Track tool-owned eval work so session disposal can await/abort it like direct session eval runs. */
@@ -371,10 +377,11 @@ export interface ToolSession {
 	xdev?: XdevState;
 	/**
 	 * Set when this session's `write` tool was granted only as the `xd://`
-	 * transport: `write xd://<tool>` dispatches mounted devices, but filesystem
-	 * writes are rejected. Granted by {@link createTools} to sessions whose
-	 * explicit tool list includes `read` but omits `write`, so xd:// mounting
-	 * can engage without expanding the write contract.
+	 * transport: `write xd://<tool>` dispatches mounted devices and `local://`
+	 * scratch stays writable, but other filesystem writes are rejected. Granted
+	 * by {@link createTools} to sessions whose explicit tool list includes `read`
+	 * but omits `write`, so xd:// mounting can engage without granting
+	 * working-tree writes.
 	 */
 	deviceOnlyWrite?: boolean;
 	/**
@@ -397,6 +404,13 @@ export interface ToolSession {
 	getSessionSpawns: () => string | null;
 	/** Session-scoped agent definitions (user-tagged model pseudonyms) merged after discovered agents. */
 	getSessionAgents?: () => readonly AgentDefinition[];
+	/**
+	 * Session agents baked into the current base prompt surface. The task
+	 * description lists these instead of the live set so tagging a model
+	 * mid-session does not mutate the provider tool prefix; the delta rides a
+	 * hidden notice. Absent when the embedder has no base-prompt surface.
+	 */
+	advertisedSessionAgents?: () => readonly AgentDefinition[];
 	/** Get resolved model string if explicitly set for this session */
 	getModelString?: () => string | undefined;
 	/** Get the current session model string, regardless of how it was chosen */
@@ -475,6 +489,8 @@ export interface ToolSession {
 	 * a data-less `useLastTurn` finalize that would assemble to an empty result.
 	 */
 	getLastAssistantText?: () => string | undefined;
+	/** Resolve a terminal yield's current or immediately preceding report, bound to its call ID. */
+	getYieldReportText?: (toolCallId: string) => string | undefined;
 	/** Replace the active workpool item contract and refresh its provider-facing prompt. */
 	setWorkPoolYieldItems?: (items: readonly WorkPoolYieldItem[]) => Promise<void>;
 	/** The tool-choice queue used to force forthcoming tool invocations and carry invocation handlers. */
@@ -778,10 +794,7 @@ export async function resolveBuiltinToolPlan(session: ToolSession, toolNames?: s
 				cfgCheckpointEnabled.get(session.settings) &&
 				((session.taskDepth ?? 0) === 0 || requestedTools !== undefined)
 			);
-		// Subagents never block on `wait`: owned job results re-wake their run
-		// through the executor's quiescence barrier, and parent messages steer them.
 		if (name === "wait") {
-			if ((session.taskDepth ?? 0) > 0) return false;
 			return (
 				cfgAsyncEnabled.get(session.settings) ||
 				(session.enableIrc !== false && isIrcEnabled(session.settings, session.taskDepth ?? 0)) ||
@@ -891,9 +904,9 @@ export async function createTools(session: ToolSession, toolNames?: string[]): P
 	// the intended restriction, and enough to overflow narrow provider context
 	// windows on MCP-heavy sessions. Grant a device-only `write` instead:
 	// `write xd://<tool>` dispatches mounted devices while filesystem writes
-	// stay rejected (enforced by WriteTool via `session.deviceOnlyWrite`). No
-	// capability is expanded: without mounting, those tools were already
-	// presented — and callable — top-level.
+	// outside the local:// session scratch stay rejected (enforced by WriteTool
+	// via `session.deviceOnlyWrite`). Mounted tools gain no capability: without
+	// mounting, they were already presented — and callable — top-level.
 	if (
 		xdevRequested &&
 		requestedTools !== undefined &&
